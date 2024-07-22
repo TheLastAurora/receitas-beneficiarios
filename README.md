@@ -1,7 +1,3 @@
-Here's a comprehensive documentation for your project, covering features, technologies used, concurrency, distribution, and setup instructions:
-
----
-
 # **Receipt of Resources by Beneficiary**
 
 ## **Features**
