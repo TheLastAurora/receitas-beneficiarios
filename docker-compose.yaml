@@ -22,7 +22,7 @@ services:
   db:
     image: postgres
     restart: unless-stopped
-    container_name: ny_taxi_db
+    container_name: resources_db
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -30,7 +30,7 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - /home/vitor/dev/zoomcamp/2_docker_sql/ny_taxi_psql_data/db:/var/lib/postgresql/data
+      - /home/vitor/dev/zoomcamp/2_docker_sql/resources_by_beneficiary/db:/var/lib/postgresql/data
     env_file:
       - .env 
 

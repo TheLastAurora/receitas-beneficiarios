@@ -1,18 +1,21 @@
-from sqlalchemy import create_engine, text
-from airflow.decorators import dag, task
+from airflow.decorators import dag, task, task_group
+from sqlalchemy import create_engine
 from airflow.models import Variable
-from airflow.sensors.external_task import ExternalTaskSensor
-from datetime import datetime
-import logging
-import os
-import urllib.request
-import shutil
-import gzip
-import polars as pl
+from airflow.models import TaskInstance
 from time import time
+import polars as pl
+import unicodedata
+import pendulum
+import requests
+import logging
+import zipfile
+import ast
+import io
+import os
 
 logger = logging.getLogger(__name__)
 
+URL = "https://portaldatransparencia.gov.br/download-de-dados/despesas-favorecidos/{file_date}"
 default_args = {
     "owner": "airflow",
     "depends_on_past": False,
@@ -21,119 +24,120 @@ default_args = {
 
 @dag(
     dag_id="load_data",
-    description="Loads CSV data to the database by connecting to DB, downloading and extracting the data, and dumping it into the database.",
-    start_date=datetime(2024, 6, 24),
     default_args=default_args,
-    schedule_interval="@once",
+    description="Downloads data from source and loads CSV into memory, then dumps it to the database.",
+    schedule_interval=None,
     catchup=False,
+    max_active_runs=1,
+    start_date=pendulum.yesterday(),
+    render_template_as_native_obj=True,
+    concurrency=2,  # Keep in mind that you should balance the batch_size and the number of tasks you should execute. Also, if you increase this value by much, airflow might SIGTERM the task for running for too long or by of memory usage (-9 code).
 )
 def load_data():
 
     @task
-    def set_env_vars():
-        env_vars = {
-            "DB_USER": os.environ["POSTGRES_USER"],
-            "DB_PASSWORD": os.environ["POSTGRES_PASSWORD"],
-            "DB_HOST": os.environ["DB_HOST"],
-            "DB_NAME": os.environ["POSTGRES_DB"],
-            "INGESTION_BATCH_SIZE": os.environ["BATCH_SIZE"],
-            "RAW_TBL_NAME": os.environ["TABLE_NAME"],
-        }
-        for k, v in env_vars.items():
-            Variable.set(k, v)
-            logger.info(f"{k} airflow env set.")
+    def pull_dates(**context):
+        str_dates = context["dag_run"].conf.get("dates")
+        return ast.literal_eval(str_dates)
 
-    @task()
-    def db_conn():
-        url = "postgresql+psycopg2://{user}:{password}@{host}:5432/{db}".format(
-            user=Variable.get("DB_USER"),
-            password=Variable.get("DB_PASSWORD"),
-            host=Variable.get("DB_HOST"),
-            db=Variable.get("DB_NAME"),
-        )
-        engine = create_engine(url)
-        conn = engine.connect()
+    @task
+    def get_file(file_id):
         try:
-            conn.execute(text("SELECT 1"))
-            logger.info("Database connection successfully stablished.")
-            Variable.set("DB_URL", value=url)  # Not the best way, since it exposes the db pwd.
-        except Exception as e:
-            logger.error(f"Couldn't stablish database connection: {e}")
+            response = requests.get(URL.format(file_date=file_id), stream=True)
+            response.raise_for_status()
+            zip_data = zipfile.ZipFile(io.BytesIO(response.content))
+            csv = zip_data.namelist()[0]
+            tmp_file_path = f"/tmp/{file_id}.csv"
+            with open(tmp_file_path, "wb") as tmp_file:
+                tmp_file.write(zip_data.open(csv).read())
+            return tmp_file_path
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"Error getting file {file_id}: {e}")
+            raise
 
     @task
-    def download_csv():
-        url = "https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/yellow_tripdata_2021-01.csv.gz"
-        logger.info("Downloading the data...")
-        with urllib.request.urlopen(url) as response, open(
-            "output.csv.gz", "wb"
-        ) as out_file:
-            shutil.copyfileobj(response, out_file)
-
-    @task
-    def extract_csv():
-        logger.info("Extracting the data...")
-        with gzip.open("output.csv.gz", "rb") as f_in:
-            with open("output.csv", "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-
-    @task
-    def insert_data():
+    def insert_data(file_path):
         engine = create_engine(Variable.get("DB_URL"))
+        batch_size = int(Variable.get("INGESTION_BATCH_SIZE", 10000))
+
+        dtypes = {
+            "codigo_favorecido": pl.Utf8,
+            "nome_favorecido": pl.Utf8,
+            "sigla_uf": pl.Utf8,
+            "nome_municipio": pl.Utf8,
+            "codigo_orgao_superior": pl.Int64,
+            "nome_orgao_superior": pl.Utf8,
+            "codigo_orgao": pl.Int64,
+            "nome_orgao": pl.Utf8,
+            "codigo_unidade_gestora": pl.Int64,
+            "nome_unidade_gestora": pl.Utf8,
+            "ano_e_mes_do_lancamento": pl.Date,
+            "valor_recebido": pl.Utf8,
+        }
+
+        offset = 0
+        stop = False
         with engine.connect() as conn:
-            logger.info(f"Connected to database.")
-            conn.execute(text(f"DROP TABLE IF EXISTS {Variable.get('RAW_TBL_NAME')}"))
-            offset = 0
-            stop = False
-            logger.info("Starting ingestion...")
+            logger.info(
+                f"Connected to database. Ready to insert file for: {file_path.split(os.path.sep)[-1]}"
+            )
             t0_start = time()
+            logger.info("Starting ingestion...")
             while True:
                 t_start = time()
                 try:
                     batched_df = pl.read_csv(
-                        "output.csv",
-                        n_rows=int(Variable.get("INGESTION_BATCH_SIZE")),
+                        file_path,
+                        n_rows=batch_size,
                         skip_rows_after_header=offset,
-                        infer_schema_length=0,
+                        separator=";",
+                        encoding="1252",
+                        decimal_comma=True,
+                        dtypes=dtypes,
                     )
                 except:
                     batched_df = pl.read_csv(
-                        "output.csv",
-                        skip_rows_after_header=offset
-                        - int(Variable.get("INGESTION_BATCH_SIZE")),
-                        infer_schema_length=0,
+                        file_path,
+                        skip_rows_after_header=offset - batch_size,
+                        separator=";",
+                        encoding="1252",
+                        decimal_comma=True,
+                        dtypes=dtypes,
                     )
                     stop = True
-                batched_df = batched_df.to_pandas().convert_dtypes()
-                print(batched_df.dtypes)
-                batched_df.to_sql(
-                    name=Variable.get("RAW_TBL_NAME"),
+                batched_df.columns = [
+                    unicodedata.normalize("NFD", col.lower().replace(" ", "_"))
+                    .encode("ascii", "ignore")
+                    .decode("utf-8")
+                    for col in batched_df.columns
+                ]
+                batched_df = batched_df.with_columns(
+                    pl.col("ano_e_mes_do_lancamento").str.strptime(pl.Date, "%m/%Y")
+                )
+                batched_df.to_pandas().to_sql(
+                    name=Variable.get("TABLE_NAME"),
                     if_exists="append",
                     con=conn,
                     index=False,
                 )
                 t_end = time()
-                logging.info(
+                logger.info(
                     f"Inserted batch starting at row {offset} in {t_end - t_start:.3f} seconds"
                 )
                 if stop:
                     break
-                offset += int(Variable.get("INGESTION_BATCH_SIZE"))
+                offset += batch_size
 
+            os.remove(file_path)
             logger.info(f"Insertion completed in {time() - t0_start:.3f} seconds")
 
-    set_env_vars_task = set_env_vars()
-    db_conn_task = db_conn()
-    download_csv_task = download_csv()
-    extract_csv_task = extract_csv()
-    insert_data_task = insert_data()
+    @task_group
+    def process_insertion(dates):
+        file_paths = get_file.expand(file_id=dates)
+        insert_tasks = insert_data.expand(file_path=file_paths)
 
-    (
-        set_env_vars_task
-        >> db_conn_task
-        >> download_csv_task
-        >> extract_csv_task
-        >> insert_data_task
-    )
+    dates = pull_dates()
+    process_insertion(dates)
 
 
-load_data = load_data()
+load_data()
