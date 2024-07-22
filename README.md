@@ -42,35 +42,40 @@ This project involves a data pipeline for extracting and loading data related to
    - Install Docker Compose using the instructions [here](https://docs.docker.com/compose/install/).
 
 2. **Clone the Repository**:
+
    ```sh
-   git clone <repository-url>
-   cd <repository-directory>
+   git clone https://github.com/TheLastAurora/receitas-beneficiarios.git
    ```
 
 3. **Create and Activate a Virtual Environment**:
 
    **For Unix/macOS**:
+   
      ```sh
      python3 -m venv venv
      source venv/bin/activate
      ```
    **For Windows**:
+
      ```sh
      python -m venv venv
      venv\Scripts\activate
      ```
 
 4. **Install Dependencies**:
+
    ```sh
    pip install -r requirements.txt
    ```
 
 5. **Build and Run Docker Containers**:
+
    ```sh
    docker-compose up --build
    ```
 
 6. **Setup Environment Variables**:
+
    - Ensure the following environment variables are set in your Docker environment or `.env` file:
      - `POSTGRES_USER`
      - `POSTGRES_PASSWORD`
