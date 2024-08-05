@@ -50,10 +50,12 @@ In the Airflow side, currently, the pipeline is structured into two primary DAGs
    - Follow the installation instructions for Docker from the [official Docker website](https://docs.docker.com/get-docker/).
    - Install Docker Compose using the instructions [here](https://docs.docker.com/compose/install/).
 
-2. **Clone the Repository**:
+2. **Clone the Repository and set permissions (if necessary)**:
 
    ```sh
    git clone https://github.com/TheLastAurora/receitas-beneficiarios.git
+   cd receitas-beneficiarios
+   chmod 777 -R ./*
    ```
 
 3. **Create and Activate a Virtual Environment**:

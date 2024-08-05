@@ -256,7 +256,6 @@ services:
     build:
       context: .
       dockerfile: spark.Dockerfile
-    container_name: spark-master
     environment:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -267,6 +266,8 @@ services:
     ports:
       - '8085:8080'
       - '7077:7077'
+    networks:
+      spark-network:
     
 
   spark-worker-1:
