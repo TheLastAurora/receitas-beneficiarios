@@ -40,7 +40,7 @@ In the Airflow side, currently, the pipeline is structured into two primary DAGs
 
 2. **Python**: Make sure Python is installed. Follow the instructions for installation from the [official Python website](https://www.python.org/downloads/).
 
-3. **Docker**: Install Docker by following the instructions on the [official Docker website](https://docs.docker.com/get-docker/).
+3. **Docker**: Install Docker by following the instructions on the [official Docker website](https://docs.docker.com/get-docker/). Also, don't forget to [add the airflow user to the docker permissions](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user).
 
 4. **Docker Compose**: Install Docker Compose using the instructions [here](https://docs.docker.com/compose/install/).
 
@@ -63,14 +63,14 @@ In the Airflow side, currently, the pipeline is structured into two primary DAGs
    **For Unix/macOS**:
    
      ```sh
-     python3 -m venv venv
-     source venv/bin/activate
+     python3 -m venv .venv
+     source .venv/bin/activate
      ```
    **For Windows**:
 
      ```sh
-     python -m venv venv
-     venv\Scripts\activate
+     python -m venv .venv
+     .venv\Scripts\activate
      ```
 
 4. **Install Dependencies**:
@@ -79,13 +79,7 @@ In the Airflow side, currently, the pipeline is structured into two primary DAGs
    pip install -r requirements.txt
    ```
 
-5. **Build and Run Docker Containers**:
-
-   ```sh
-   docker-compose up --build
-   ```
-
-6. **Setup Environment Variables**:
+5. **Setup Environment Variables**:
 
    Ensure the following environment variables are set in your `.env` file as in the `.env_sample`:
 
@@ -97,19 +91,25 @@ In the Airflow side, currently, the pipeline is structured into two primary DAGs
       - `BATCH_SIZE`
       - `AIRFLOW_UID`
 
+6. **Build and Run Docker Containers**:
+
+   ```sh
+   docker-compose up --build
+   ```
+
+
+
 7. **Access Airflow Web Interface**:
    - Open your web browser and navigate to `http://localhost:8081` to access the Airflow UI.
-   - Trigger the `setup_pipeline` DAG manually from the Airflow UI if it does not start automatically.
-
-8. **Verify DAG Execution**:
+   - Trigger the `setup_pipeline` DAG manually from the Airflow UI if it does not start automatically.]
    - Monitor the execution of the `setup_pipeline` and `load_data` DAGs through the Airflow UI.
    - Check logs for debugging and verification.
    - Currently, you might have to check the first insert task in `load_data` as success to proceed with the pipeline (date bug/problem).
 
-7. **Access Kafka-UI Web Interface**:
+8. **Access Kafka-UI Web Interface**:
    - You can check the Kafka info on topics, messages and the schema registry in `http://localhost:8088`.
 
-8. **Access Spark Web Interface**:
+9. **Access Spark Web Interface**:
    - You are able to check the health of the spark clusters in `http://localhost:8085`.
 
 
