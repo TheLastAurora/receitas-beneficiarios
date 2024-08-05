@@ -2,10 +2,14 @@ from airflow.decorators import dag, task, task_group
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from sqlalchemy import create_engine, text
 from airflow.models import Variable
+import requests
 import pendulum
 import logging
+import json
 import os
 
+logging.basicConfig()
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 default_args = {
@@ -16,11 +20,11 @@ default_args = {
 TABLE_NAME = os.environ["TABLE_NAME"]
 
 @dag(
-    dag_id="setup_database",
+    dag_id="setup_pipeline",
     default_args=default_args,
-    description="Creates the database tables, its partitions, indexes and triggers.",
+    description="Creates the database tables, its partitions, indexes and triggers. Then, creates the Debezium connector.",
     catchup=False,
-    # schedule="@once",  # Use this if you wish to execute the full pipeline automatically.
+    schedule="@once",  # Use this if you wish to execute the full pipeline automatically.
     max_active_runs=1,
     start_date=pendulum.now(),
     concurrency=40
@@ -42,7 +46,7 @@ def setup():
             codigo_unidade_gestora BIGINT,
             nome_unidade_gestora VARCHAR(255),
             ano_e_mes_do_lancamento DATE,
-            valor_recebido FLOAT,
+            valor_recebido VARCHAR(50),
             PRIMARY KEY (id, ano_e_mes_do_lancamento)
         ) PARTITION BY RANGE(ano_e_mes_do_lancamento);
     """
@@ -149,8 +153,37 @@ def setup():
         create_tbl_task = create_tbl()
 
         for i, (start_date, end_date) in enumerate(dates):
-            partitions_task_group = task_group(group_id=f"setup_partitions_{i}")(setup_partitions)(start_date, end_date)
-            partitions_task_group.set_upstream(create_tbl_task)
+                    partitions_task_group = task_group(group_id=f"setup_partitions_{i}")(setup_partitions)(start_date, end_date)
+                    partitions_task_group.set_upstream(create_tbl_task)
+
+    @task
+    def setup_kafka_connector():
+        dbz_endpoint = "http://debezium:8083/connectors"
+    
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        register_psql = {
+            "name": Variable.get("TABLE_NAME").replace("_", "-"),
+            "config": {
+                "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+                "tasks.max": "1",
+                "database.hostname": Variable.get("DB_HOST"),
+                "database.port": "5432",
+                "database.user": Variable.get("DB_USER"),
+                "database.password": Variable.get("DB_PASSWORD"),
+                "database.dbname": Variable.get("DB_NAME"),
+                "topic.prefix": "postgres",
+                "plugin.name": "pgoutput",
+                "table.list": f"public.{Variable.get('TABLE_NAME')}",
+                "key.converter.schema.registry.url": "http://schema-registry:8096",
+                "value.converter.schema.registry.url": "http://schema-registry:8096",
+                "key.converter": "io.confluent.connect.avro.AvroConverter",
+                "value.converter": "io.confluent.connect.avro.AvroConverter",
+        }}
+        payload = json.dumps(register_psql)
+        conn_req = requests.post(url=dbz_endpoint, data=payload, headers=headers)
+        logger.info(conn_req.content) # TODO: Add error handling for code 500.
+
+
 
     setup_trigger_load = TriggerDagRunOperator(
         task_id="completed",
@@ -160,6 +193,6 @@ def setup():
         reset_dag_run=True
     )
         
-    set_env() >> test_conn() >> setup_tbls(dates) >> push_dates() >> setup_trigger_load
+    set_env() >> test_conn() >> setup_tbls(dates) >> setup_kafka_connector() >> push_dates() >> setup_trigger_load
 
 setup()

@@ -1,20 +1,19 @@
-Here's a comprehensive documentation for your project, covering features, technologies used, concurrency, distribution, and setup instructions:
-
----
-
 # **Receipt of Resources by Beneficiary**
 
 ## **Features**
 
-This project involves a data pipeline for extracting and loading data related to Receipt of Resources by Beneficiary from the [Transparency Portal](https://portaldatransparencia.gov.br/download-de-dados/despesas-favorecidos). This will be further extended as a full end-to-end DE project. It mainly uses Apache Airflow, Docker and PostgreSQL. The pipeline is structured into two primary DAGs (Directed Acyclic Graphs):
+This project involves a ETL pipeline related to Receipt of Resources by Beneficiary from the [Transparency Portal](https://portaldatransparencia.gov.br/download-de-dados/despesas-favorecidos) using and open-source stack, such as Airflow, Kafka and Polars. It has an educational purpose only.
 
-1. **`setup_database` DAG**:
-   - **Purpose**: Creates database tables, partitions, and constraints.
+In the Airflow side, currently, the pipeline is structured into two primary DAGs (Directed Acyclic Graphs):
+
+1. **`setup_pipeline` DAG**:
+   - **Purpose**: Creates database tables, partitions, constraints, and sets up a Debezium connector for CDC.
    - **Tasks**:
      - Set environment variables.
      - Test database connection.
      - Create the main table and its partitions.
      - Set up constraints on the partitions.
+     - Configure the Debezium connector.
      - Trigger the `load_data` DAG after setup completion.
 
 2. **`load_data` DAG**:
@@ -28,12 +27,22 @@ This project involves a data pipeline for extracting and loading data related to
 ## **Technologies Used**
 
 - **Apache Airflow**: Orchestrating and managing the data pipeline.
+- **Apache Spark**: Data processing [ONLY IN PROTOTYPE]
 - **Docker**: Containerizing the Airflow setup and ensuring consistent execution environments.
 - **Polars**: CSV file processing.
-- **PostgreSQL**: Database management.
-- **SQLAlchemy**: Database connections and queries.
-- **Requests**: Downloading data from the source.   
+- **PostgreSQL**: Database management. 
+- **Kafka**: Message streaming
+- **Schema Registry**: Managing the Data schema versioning
 
+## **Prerequisites**
+
+1. **Git**: Ensure Git is installed on your machine. You can download it from the [official Git website](https://git-scm.com/downloads).
+
+2. **Python**: Make sure Python is installed. Follow the instructions for installation from the [official Python website](https://www.python.org/downloads/).
+
+3. **Docker**: Install Docker by following the instructions on the [official Docker website](https://docs.docker.com/get-docker/).
+
+4. **Docker Compose**: Install Docker Compose using the instructions [here](https://docs.docker.com/compose/install/).
 
 ## **Setup Instructions**
 
@@ -76,21 +85,31 @@ This project involves a data pipeline for extracting and loading data related to
 
 6. **Setup Environment Variables**:
 
-   - Ensure the following environment variables are set in your Docker environment or `.env` file:
-     - `POSTGRES_USER`
-     - `POSTGRES_PASSWORD`
-     - `DB_HOST`
-     - `POSTGRES_DB`
-     - `BATCH_SIZE`
-     - `TABLE_NAME`
+   Ensure the following environment variables are set in your `.env` file as in the `.env_sample`:
+
+      - `POSTGRES_USER`
+      - `POSTGRES_PASSWORD`
+      - `POSTGRES_DB`
+      - `DB_HOST`
+      - `TABLE_NAME`
+      - `BATCH_SIZE`
+      - `AIRFLOW_UID`
 
 7. **Access Airflow Web Interface**:
    - Open your web browser and navigate to `http://localhost:8081` to access the Airflow UI.
-   - Trigger the `setup_database` DAG manually from the Airflow UI if it does not start automatically.
+   - Trigger the `setup_pipeline` DAG manually from the Airflow UI if it does not start automatically.
 
 8. **Verify DAG Execution**:
-   - Monitor the execution of the `setup_database` and `load_data` DAGs through the Airflow UI.
+   - Monitor the execution of the `setup_pipeline` and `load_data` DAGs through the Airflow UI.
    - Check logs for debugging and verification.
+   - Currently, you might have to check the first insert task in `load_data` as success to proceed with the pipeline (date bug/problem).
+
+7. **Access Kafka-UI Web Interface**:
+   - You can check the Kafka info on topics, messages and the schema registry in `http://localhost:8088`.
+
+8. **Access Spark Web Interface**:
+   - You are able to check the health of the spark clusters in `http://localhost:8085`.
+
 
 ## **Uninstall Instructions**
 
@@ -104,3 +123,4 @@ This project involves a data pipeline for extracting and loading data related to
 
 - Ensure that your PostgreSQL instance is properly configured and accessible from the Docker containers.
 - Adjust batch sizes and concurrency settings based on your hardware capabilities and data volume to optimize performance.
+- Also, Be aware that this will consume lots of ram and CPU.

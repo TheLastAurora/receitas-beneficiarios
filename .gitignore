@@ -1,5 +1,5 @@
 # PSQL Volume
-ny_taxi_psql_data/
+volumes/psql
 
 # Airflow configuration
 airflow.cfg

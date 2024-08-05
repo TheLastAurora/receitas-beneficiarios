@@ -13,6 +13,8 @@ import ast
 import io
 import os
 
+logging.basicConfig()
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 URL = "https://portaldatransparencia.gov.br/download-de-dados/despesas-favorecidos/{file_date}"
@@ -31,7 +33,7 @@ default_args = {
     max_active_runs=1,
     start_date=pendulum.yesterday(),
     render_template_as_native_obj=True,
-    concurrency=2,  # Keep in mind that you should balance the batch_size and the number of tasks you should execute. Also, if you increase this value by much, airflow might SIGTERM the task for running for too long or by of memory usage (-9 code).
+    concurrency=5,  # Keep in mind that you should balance the batch_size and the number of tasks you should execute. Also, if you increase this value by much, airflow might SIGTERM the task for running for too long or by of memory usage (-9 code).
 )
 def load_data():
 
@@ -71,7 +73,7 @@ def load_data():
             "nome_orgao": pl.Utf8,
             "codigo_unidade_gestora": pl.Int64,
             "nome_unidade_gestora": pl.Utf8,
-            "ano_e_mes_do_lancamento": pl.Date,
+            "ano_e_mes_do_lancamento": pl.Utf8,
             "valor_recebido": pl.Utf8,
         }
 
@@ -93,7 +95,7 @@ def load_data():
                         separator=";",
                         encoding="1252",
                         decimal_comma=True,
-                        dtypes=dtypes,
+                        dtypes=list(dtypes.values()),
                     )
                 except:
                     batched_df = pl.read_csv(
@@ -102,7 +104,7 @@ def load_data():
                         separator=";",
                         encoding="1252",
                         decimal_comma=True,
-                        dtypes=dtypes,
+                        dtypes=list(dtypes.values()),
                     )
                     stop = True
                 batched_df.columns = [
@@ -112,8 +114,10 @@ def load_data():
                     for col in batched_df.columns
                 ]
                 batched_df = batched_df.with_columns(
-                    pl.col("ano_e_mes_do_lancamento").str.strptime(pl.Date, "%m/%Y")
+                    pl.col("ano_e_mes_do_lancamento").str.to_date("%m/%Y")
                 )
+                # logger.info()
+                logger.info(batched_df.schema)
                 batched_df.to_pandas().to_sql(
                     name=Variable.get("TABLE_NAME"),
                     if_exists="append",

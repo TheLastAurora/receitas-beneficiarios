@@ -1,6 +1,8 @@
 x-airflow-common:
   &airflow-common
-  build: .
+  build:
+    context: .
+    dockerfile: airflow.Dockerfile
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:postgres@postgres:5431/airflow
@@ -19,6 +21,290 @@ x-airflow-common:
     - .env
 
 services:
+  controller-1:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: controller-1
+    container_name: controller-1
+    environment:
+        KAFKA_NODE_ID: 1
+        CLUSTER_ID: Nk018hRAQFytWskYqtQduw
+        KAFKA_PROCESS_ROLES: controller
+        KAFKA_LISTENERS: CONTROLLER://controller-1:19091
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
+        KAFKA_INTER_BROKER_LISTENER_NAME: CONTROLLER
+        KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+        KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:19091,2@controller-2:19092
+        KAFKA_JMX_PORT: 9999
+        KAFKA_JMX_HOSTNAME: controller-1
+        KAFKA_BROKER_RACK: rack-0
+        KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+        KAFKA_OFFSET_REPLICATION_FACTOR: 3
+        KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+        KAFKA_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_METADATA_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_BALANCER_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_METRICS_REPORTER_TOPIC_REPLICAS: 3
+        KAFKA_METRICS_REPORTER_BOOTSTRAP_SERVERS: kafka-1:19094,kafka-2:19095,kafka-3:19096
+    cap_add:
+        - NET_ADMIN
+    ports:
+        - 19091:19091
+    volumes:
+        - ./volumes/kafka/kafka_config.yml:/tmp/kafka_config.yml
+
+  controller-2:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: controller-2
+    container_name: controller-2
+    environment:
+        KAFKA_NODE_ID: 2
+        CLUSTER_ID: Nk018hRAQFytWskYqtQduw
+        KAFKA_PROCESS_ROLES: controller
+        KAFKA_LISTENERS: CONTROLLER://controller-2:19092
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
+        KAFKA_INTER_BROKER_LISTENER_NAME: CONTROLLER
+        KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+        KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:19091,2@controller-2:19092
+        KAFKA_JMX_PORT: 9999
+        KAFKA_JMX_HOSTNAME: controller-2
+        KAFKA_BROKER_RACK: rack-0
+        KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+        KAFKA_OFFSET_REPLICATION_FACTOR: 3
+        KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+        KAFKA_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_METADATA_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_BALANCER_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_METRICS_REPORTER_TOPIC_REPLICAS: 3
+        KAFKA_METRICS_REPORTER_BOOTSTRAP_SERVERS: kafka-1:19094,kafka-2:19095,kafka-3:19096
+    cap_add:
+        - NET_ADMIN
+    ports:
+        - 19092:19092
+    volumes:
+        - ./volumes/kafka/kafka_config.yml:/tmp/kafka_config.yml
+        
+  kafka-1:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka-1
+    container_name: kafka-1
+    healthcheck:
+        test: curl -fail --silent http://kafka-1:8090/kafka/v3/clusters/ --output /dev/null || exit 1
+        interval: 10s
+        retries: 10
+        start_period: 20s
+    depends_on:
+        - controller-1
+        - controller-2
+    environment:
+        KAFKA_LISTENERS: PLAINTEXT://kafka-1:19094, EXTERNAL://0.0.0.0:9091
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+        KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:19094, EXTERNAL://localhost:9091
+        KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+        KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        KAFKA_JMX_PORT: 10001
+        KAFKA_JMX_HOSTNAME: localhost
+        KAFKA_BROKER_RACK: rack-0
+        KAFKA_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_CLUSTER_LINK_ENABLE: True
+        KAFKA_REPORTERS_TELEMETRY_AUTO_ENABLE: True
+        KAFKA_NODE_ID: 4
+        CLUSTER_ID: Nk018hRAQFytWskYqtQduw
+        KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:19091,2@controller-2:19092
+        KAFKA_PROCESS_ROLES: broker
+        KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+        KAFKA_METRICS_REPORTER_BOOTSTRAP_SERVERS: kafka-1:19094,kafka-2:19095,kafka-3:19096
+    cap_add:
+        - NET_ADMIN
+    ports:
+        - 9091:9091
+        - 10001:10001
+        - 10101:8091
+        - 10201:8090
+    volumes:
+        - ./volumes/kafka/kafka_config.yml:/tmp/kafka_config.yml
+
+  kafka-2:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka-2
+    container_name: kafka-2
+    healthcheck:
+        test: curl -fail --silent http://kafka-2:8090/kafka/v3/clusters/ --output /dev/null || exit 1
+        interval: 10s
+        retries: 10
+        start_period: 20s
+    depends_on:
+        - controller-1
+        - controller-2
+    environment:
+        KAFKA_LISTENERS: PLAINTEXT://kafka-2:19095, EXTERNAL://0.0.0.0:9092
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+        KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:19095, EXTERNAL://localhost:9092
+        KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+        KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        KAFKA_JMX_PORT: 10002
+        KAFKA_JMX_HOSTNAME: localhost
+        KAFKA_BROKER_RACK: rack-0
+        KAFKA_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_CLUSTER_LINK_ENABLE: True
+        KAFKA_REPORTERS_TELEMETRY_AUTO_ENABLE: True
+        KAFKA_NODE_ID: 5
+        CLUSTER_ID: Nk018hRAQFytWskYqtQduw
+        KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:19091,2@controller-2:19092
+        KAFKA_PROCESS_ROLES: broker
+        KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+        KAFKA_METRICS_REPORTER_BOOTSTRAP_SERVERS: kafka-1:19094,kafka-2:19095,kafka-3:19096
+    cap_add:
+        - NET_ADMIN
+    ports:
+        - 9092:9092
+        - 10002:10002
+        - 10102:8091
+        - 10202:8090
+    volumes:
+        - ./volumes/kafka/kafka_config.yml:/tmp/kafka_config.yml
+
+  kafka-3:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka-3
+    container_name: kafka-3
+    healthcheck:
+        test: curl -fail --silent http://kafka-3:8090/kafka/v3/clusters/ --output /dev/null || exit 1
+        interval: 10s
+        retries: 10
+        start_period: 20s
+    depends_on:
+        - controller-1
+        - controller-2
+    environment:
+        KAFKA_LISTENERS: PLAINTEXT://kafka-3:19096, EXTERNAL://0.0.0.0:9093
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+        KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:19096, EXTERNAL://localhost:9093
+        KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+        KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        KAFKA_JMX_PORT: 10003
+        KAFKA_JMX_HOSTNAME: localhost
+        KAFKA_BROKER_RACK: rack-0
+        KAFKA_LICENSE_TOPIC_REPLICATION_FACTOR: 3
+        KAFKA_CLUSTER_LINK_ENABLE: True
+        KAFKA_REPORTERS_TELEMETRY_AUTO_ENABLE: True
+        KAFKA_NODE_ID: 6
+        CLUSTER_ID: Nk018hRAQFytWskYqtQduw
+        KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:19091,2@controller-2:19092
+        KAFKA_PROCESS_ROLES: broker
+        KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+        KAFKA_METRICS_REPORTER_BOOTSTRAP_SERVERS: kafka-1:19094,kafka-2:19095,kafka-3:19096
+    cap_add:
+        - NET_ADMIN
+    ports:
+        - 9093:9093
+        - 10003:10003
+        - 10103:8091
+        - 10203:8090
+    volumes:
+        - ./volumes/kafka/kafka_config.yml:/tmp/kafka_config.yml
+
+  debezium:
+    image: debezium/connect:latest
+    container_name: debezium
+    depends_on:
+        - kafka-1
+        - kafka-2
+        - kafka-3
+    ports:
+        - "8083:8083"
+    environment:
+        - BOOTSTRAP_SERVERS=kafka-1:19094,kafka-2:19095,kafka-3:19096
+        - CONFIG_STORAGE_TOPIC=debezium-config
+        - KAFKA_CONNECT_PLUGINS_DIR=/kafka/connect/
+        - CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL=http://schema-registry:8096
+        - CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL=http://schema-registry:8096
+        - KEY_CONVERTER=io.confluent.connect.avro.AvroConverter
+        - VALUE_CONVERTER=io.confluent.connect.avro.AvroConverter
+        - OFFSET_STORAGE_TOPIC=debezium-offset
+        - STATUS_STORAGE_TOPIC=debezium-statusf
+        - GROUP_ID=1
+    volumes:
+      - ./volumes/debezium/plugins:/kafka/connect/plugins
+
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:latest
+    hostname: schema-registry
+    depends_on:
+        - kafka-1
+        - kafka-2
+        - kafka-3
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-1:19094,kafka-2:19095,kafka-3:19096
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8096
+    ports:
+      - "8096:8081"
+
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - 8088:8080
+    environment:
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    volumes:
+      - ./volumes/kui/config.yml:/etc/kafkaui/dynamic_config.yaml
+
+
+  spark:
+    build:
+      context: .
+      dockerfile: spark.Dockerfile
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    ports:
+      - '8085:8080'
+      - '7077:7077'
+    
+
+  spark-worker-1:
+    build:
+      context: .
+      dockerfile: spark.Dockerfile
+    container_name: spark-worker-1
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    networks:
+      spark-network:
+
+  spark-worker-2:
+    build:
+      context: .
+      dockerfile: spark.Dockerfile
+    container_name: spark-worker-2
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    networks:
+      spark-network:
+
   db:
     image: postgres
     restart: unless-stopped
@@ -27,10 +313,11 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
+    command: ['postgres', '-c', 'wal_level=logical']
     ports:
       - '5432:5432'
     volumes:
-      - /home/vitor/dev/zoomcamp/2_docker_sql/resources_by_beneficiary/db:/var/lib/postgresql/data
+      - ./volumes/psql/db:/var/lib/postgresql/data
     env_file:
       - .env 
 
@@ -75,3 +362,6 @@ services:
     command: airflow scheduler
     container_name: airflow_scheduler
     restart: always
+
+networks:
+  spark-network:
